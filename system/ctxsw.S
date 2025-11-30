@@ -27,6 +27,13 @@ ctxsw:
 		movl	(%eax),%esp	/* Pop up new process's SP	*/
 
 		/* Restore new seg. registers here, if multiple allowed */
+		
+		/* Switch page directory for new process */
+		/* Get new process ID from proctab */
+		/* We need to get the page directory from the process table */
+		/* For now, we'll do this in C code called from resched */
+		/* Actually, we can access proctab here if we know the new pid */
+		/* But it's easier to do it in resched.c */
 
 		popal			/* Restore general registers	*/
 		movl	4(%esp),%ebp	/* Pick up ebp before restoring	*/
