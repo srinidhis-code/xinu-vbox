@@ -180,13 +180,6 @@ static	void	sysinit()
 		prptr->prname[0] = NULLCH;
 		prptr->prstkbase = NULL;
 		prptr->prprio = 0;
-		/* Initialize paging fields */
-		prptr->prpd = NULL;
-		prptr->prvheap = NULL;
-		prptr->prvheapnext = NULL;
-		prptr->prvpages = 0;
-		prptr->prffsframes = 0;
-		prptr->prisuser = FALSE;
 	}
 
 	/* Initialize the Null process entry */	
@@ -198,8 +191,6 @@ static	void	sysinit()
 	prptr->prstkbase = getstk(NULLSTK);
 	prptr->prstklen = NULLSTK;
 	prptr->prstkptr = 0;
-	prptr->prpd = NULL;	/* Null process uses kernel PD */
-	prptr->prisuser = FALSE;
 	currpid = NULLPROC;
 	
 	/* Initialize semaphores */
@@ -231,15 +222,6 @@ static	void	sysinit()
 	for (i = 0; i < NDEVS; i++) {
 		init(i);
 	}
-	
-	/* Initialize paging and enable it */
-	extern void paging_init(void);
-	paging_init();
-	
-	/* Install page fault handler (interrupt 14) */
-	extern void pagefault_handler_disp(void);
-	set_evec(14, (uint32)pagefault_handler_disp);
-	
 	return;
 }
 

@@ -43,7 +43,6 @@ extern	syscall	control(did32, int32, int32, int32);
 
 /* in file create.c */
 extern	pid32	create(void *, uint32, pri16, char *, uint32, ...);
-extern	pid32	newpid(void);
 
 /* in file ctxsw.S */
 extern	void	ctxsw(void *, void *);
@@ -619,31 +618,6 @@ extern	void	xdone(void);
 
 /* in file yield.c */
 extern	syscall	yield(void);
-
-/* in file vcreate.c */
-extern	pid32	vcreate(void *, uint32, pri16, char *, uint32, ...);
-
-/* in file vmalloc.c */
-extern	char	*vmalloc(uint32);
-
-/* in file vfree.c */
-extern	syscall	vfree(char *, uint32);
-
-/* in file pagefault_handler.c */
-extern	void	pagefault_handler(void);
-
-/* in file pagefault_handler_disp.S */
-extern	void	pagefault_handler_disp(void);
-
-/* in file paging_init.c */
-extern	void	paging_init(void);
-
-/* in file paging_debug.c */
-extern	uint32	free_ffs_pages(void);
-extern	uint32	free_swap_pages(void);
-extern	uint32	allocated_virtual_pages(pid32);
-extern	uint32	used_ffs_frames(pid32);
-extern	void	dump_frame_info(void);
 
 /* NETWORK BYTE ORDER CONVERSION NOT NEEDED ON A BIG-ENDIAN COMPUTER */
 #define	htons(x)   ( ( 0xff & ((x)>>8) ) | ( (0xff & (x)) << 8 ) )

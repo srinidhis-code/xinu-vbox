@@ -41,26 +41,6 @@ void	resched(void)		/* Assumes interrupts are disabled	*/
 	ptnew = &proctab[currpid];
 	ptnew->prstate = PR_CURR;
 	preempt = QUANTUM;		/* Reset time slice for process	*/
-	
-	/* Switch page directory if process has one, otherwise use kernel PD */
-	/* CR3 needs physical address, but prpd stores virtual address */
-	/* Since kernel has identity mapping for first 32MB, virtual = physical */
-	if (ptnew->prpd != NULL) {
-		/* Convert virtual address to physical (identity mapped) */
-		uint32 pd_phys = (uint32)ptnew->prpd;
-		write_cr3(pd_phys);
-	} else {
-		/* No PD recorded (e.g., torn down current process) - fall back to kernel PD */
-		extern pd_t *kernel_pd;
-		if (kernel_pd != NULL) {
-			uint32 kernel_pd_phys = (uint32)kernel_pd;
-			write_cr3(kernel_pd_phys);
-		} else {
-			/* If kernel_pd is somehow NULL, bail out to avoid loading CR3=0 */
-			panic("resched: kernel_pd is NULL");
-		}
-	}
-	
 	ctxsw(&ptold->prstkptr, &ptnew->prstkptr);
 
 	/* Old process returns here when resumed */

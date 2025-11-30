@@ -2,7 +2,7 @@
 
 #include <xinu.h>
 
-pid32	newpid(void);	/* Also used by vcreate */
+local	int newpid();
 
 /*------------------------------------------------------------------------
  *  create  -  Create a process to start running a function on x86
@@ -101,7 +101,7 @@ pid32	create(
  *  newpid  -  Obtain a new (free) process ID
  *------------------------------------------------------------------------
  */
-pid32	newpid(void)
+local	pid32	newpid(void)
 {
 	uint32	i;			/* Iterate through all processes*/
 	static	pid32 nextpid = 1;	/* Position in table to try or	*/
