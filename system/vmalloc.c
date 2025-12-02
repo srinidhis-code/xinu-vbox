@@ -10,12 +10,18 @@ static uint32 round_page(uint32 n)
 
 char* vmalloc(uint32 nbytes)
 {
-    struct procent *prptr = &proctab[currpid];
+    intmask mask;
+    struct procent *prptr;
     struct vmem_region *r, *newr;
     uint32 size;
     uint32 alloc_addr;
 
+    mask = disable();
+
+    prptr = &proctab[currpid];
+
     if (nbytes == 0) {
+        restore(mask);
         return (char*)SYSERR;
     }
 
@@ -37,6 +43,7 @@ char* vmalloc(uint32 nbytes)
                 /* Split region: [alloc] + [remaining free] */
                 newr = (struct vmem_region *)getmem(sizeof(struct vmem_region));
                 if ((int)newr == SYSERR) {
+                    restore(mask);
                     return (char*)SYSERR;
                 }
 
@@ -52,10 +59,12 @@ char* vmalloc(uint32 nbytes)
                 prptr->vmem.total_allocated += (size / PAGE_SIZE);
             }
 
+            restore(mask);
             return (char*)alloc_addr;
         }
     }
 
     /* No suitable free region found */
+    restore(mask);
     return (char*)SYSERR;
 }

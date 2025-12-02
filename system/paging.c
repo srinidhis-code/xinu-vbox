@@ -28,12 +28,10 @@ static int           pt_next = 0;    /* next free PT frame index */
 typedef struct {
     bool8         used;    /* TRUE if this FFS slot is in use        */
     pid32         owner;   /* pid that owns this frame               */
-    unsigned long phys;    /* aligned physical address (for PTE)     */
-    char         *raw;     /* original pointer returned by getmem()  */
 } ffs_frame_t;
 
-/* Logical pool of FFS frames allocated from kernel heap via getmem().
- * Each slot tracks both the aligned address (for PTEs) and raw pointer (for freeing).
+/* FFS frames are at fixed physical addresses: FFS_START to FFS_END.
+ * Frame i is at physical address: FFS_START + (i * PAGE_SIZE)
  */
 static ffs_frame_t ffs_tab[MAX_FFS_SIZE];
 static uint32      ffs_free_count = MAX_FFS_SIZE;
@@ -88,15 +86,19 @@ uint32 allocated_virtual_pages(pid32 pid)
 /* -----------------------------------------------------------------------
  * ffs_alloc_frame - allocate one FFS frame for a process
  *   Returns physical address of a 4KB frame, or SYSERR on failure.
+ *   FFS frames are at fixed addresses: FFS_START + (index * PAGE_SIZE)
  * -----------------------------------------------------------------------
  */
 unsigned long ffs_alloc_frame(pid32 pid)
 {
+    intmask mask;
     int   i;
-    char *raw;
-    unsigned long aligned;
+    unsigned long frame_addr;
+
+    mask = disable();
 
     if (isbadpid(pid)) {
+        restore(mask);
         return (unsigned long)SYSERR;
     }
 
@@ -104,71 +106,60 @@ unsigned long ffs_alloc_frame(pid32 pid)
     for (i = 0; i < MAX_FFS_SIZE; i++) {
         if (!ffs_tab[i].used) {
 
-            /* Get slightly more than a page so we can align safely */
-            raw = getmem(PAGE_SIZE + PAGE_SIZE - 1);
-            if ((int)raw == SYSERR) {
-                /* Out of physical memory */
-                return (unsigned long)SYSERR;
-            }
-
-            /* Align to 4KB boundary */
-            aligned = ((unsigned long)raw + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+            /* Calculate physical address for this FFS frame */
+            frame_addr = FFS_START + (i * PAGE_SIZE);
 
             /* Record metadata */
             ffs_tab[i].used  = TRUE;
             ffs_tab[i].owner = pid;
-            ffs_tab[i].phys  = aligned;
-            ffs_tab[i].raw   = raw;
 
             if (ffs_free_count > 0) {
                 ffs_free_count--;
             }
 
-            /* Zero out the aligned page (safe: region size > PAGE_SIZE) */
-            memset((void *)aligned, 0, PAGE_SIZE);
+            /* Zero out the frame */
+            memset((void *)frame_addr, 0, PAGE_SIZE);
 
-            return aligned;
+            restore(mask);
+            return frame_addr;
         }
     }
 
     /* No free FFS slots */
+    restore(mask);
     return (unsigned long)SYSERR;
 }
 
 /* -----------------------------------------------------------------------
- * ffs_free_frame - free one FFS frame and return it to getmem pool
+ * ffs_free_frame - free one FFS frame (mark slot as unused)
+ *   FFS frames are at fixed addresses, no need to call freemem()
  * -----------------------------------------------------------------------
  */
 void ffs_free_frame(pid32 pid, unsigned long frame)
 {
+    intmask mask;
     int i;
 
-    if (frame == 0) {
+    mask = disable();
+
+    if (frame == 0 || frame < FFS_START || frame >= FFS_END) {
+        restore(mask);
         return;
     }
 
-    for (i = 0; i < MAX_FFS_SIZE; i++) {
-        if (ffs_tab[i].used && ffs_tab[i].phys == frame) {
+    /* Calculate index from frame address */
+    i = (frame - FFS_START) / PAGE_SIZE;
 
-            /* Optionally check owner == pid; we can ignore mismatch */
-            if (ffs_tab[i].raw != NULL) {
-                /* Free the SAME block we got from getmem() */
-                freemem(ffs_tab[i].raw, PAGE_SIZE + PAGE_SIZE - 1);
-            }
+    if (i >= 0 && i < MAX_FFS_SIZE && ffs_tab[i].used) {
+        ffs_tab[i].used  = FALSE;
+        ffs_tab[i].owner = -1;
 
-            ffs_tab[i].used  = FALSE;
-            ffs_tab[i].owner = -1;
-            ffs_tab[i].phys  = 0;
-            ffs_tab[i].raw   = NULL;
-
-            if (ffs_free_count < MAX_FFS_SIZE) {
-                ffs_free_count++;
-            }
-            return;
+        if (ffs_free_count < MAX_FFS_SIZE) {
+            ffs_free_count++;
         }
     }
 
-    /* If not found, silently ignore for now */
+    restore(mask);
 }
 
 /* -----------------------------------------------------------------------
@@ -179,14 +170,22 @@ void ffs_free_frame(pid32 pid, unsigned long frame)
  */
 unsigned long alloc_frame(void)
 {
+    intmask mask;
+    unsigned long frame;
+
+    mask = disable();
+
     if (pt_next >= MAX_PT_SIZE) {
+        restore(mask);
         panic("alloc_frame: out of PT frames");
     }
 
-    unsigned long frame = pt_base + (pt_next * PAGE_SIZE);
+    frame = pt_base + (pt_next * PAGE_SIZE);
     pt_next++;
 
     memset((void *)frame, 0, PAGE_SIZE);
+
+    restore(mask);
     return frame;   /* physical address (identity-mapped) */
 }
 
@@ -246,12 +245,10 @@ void init_paging(void)
     }
     pt_next = 0;
 
-    /* Init FFS table */
+    /* Init FFS table - frames are at fixed addresses FFS_START + (i * PAGE_SIZE) */
     for (i = 0; i < MAX_FFS_SIZE; i++) {
         ffs_tab[i].used  = FALSE;
         ffs_tab[i].owner = -1;
-        ffs_tab[i].phys  = 0;
-        ffs_tab[i].raw   = NULL;
     }
     ffs_free_count = MAX_FFS_SIZE;
 
@@ -259,23 +256,19 @@ void init_paging(void)
     sys_pdbr = alloc_frame();
     sys_page_dir = (pd_t *)sys_pdbr;
 
-    /* Map kernel TEXT, DATA, BSS */
-    map_region(sys_page_dir, 0, (unsigned long)&etext);
-    map_region(sys_page_dir,
-               (unsigned long)&etext,
-               (unsigned long)&edata);
-    map_region(sys_page_dir,
-               (unsigned long)&edata,
-               (unsigned long)&ebss);
+    /* Identity-map physical memory: 0 to PHYS_MEM_END (224MB)
+     * Layout:
+     *   0x00000000 - 0x02000000 (32MB)  : Kernel
+     *   0x02000000 - 0x06000000 (64MB)  : FFS frames
+     *   0x06000000 - 0x0E000000 (128MB) : Swap space
+     */
+    map_region(sys_page_dir, 0, PHYS_MEM_END);
 
-    /* Map kernel heap: end → maxheap */
-    map_region(sys_page_dir, (unsigned long)&end, (unsigned long)maxheap);
-
-    /* Identity-map entire memory range up to maxheap (safe, simple) */
-    map_region(sys_page_dir, 0, (unsigned long)maxheap);
-
-    kprintf("Paging: sys_pdbr = 0x%08X, maxheap = 0x%08X\n",
-            sys_pdbr, (unsigned long)maxheap);
+    kprintf("Paging: sys_pdbr=0x%08X, mapped=0x%08X (224MB)\n",
+            sys_pdbr, PHYS_MEM_END);
+    kprintf("  Kernel: 0x00000000 - 0x%08X\n", KERNEL_END);
+    kprintf("  FFS:    0x%08X - 0x%08X (%d frames)\n", FFS_START, FFS_END, MAX_FFS_SIZE);
+    kprintf("  Swap:   0x%08X - 0x%08X (%d frames)\n", SWAP_START, SWAP_END, MAX_SWAP_SIZE);
 }
 
 /* -----------------------------------------------------------------------
@@ -284,16 +277,24 @@ void init_paging(void)
  */
 void vm_cleanup(pid32 pid)
 {
+    intmask mask;
     int i;
 
+    mask = disable();
+
     if (isbadpid(pid)) {
+        restore(mask);
         return;
     }
 
-    /* Free all FFS frames owned by this pid using ffs_free_frame() */
+    /* Free all FFS frames owned by this pid */
     for (i = 0; i < MAX_FFS_SIZE; i++) {
         if (ffs_tab[i].used && ffs_tab[i].owner == pid) {
-            ffs_free_frame(pid, ffs_tab[i].phys);
+            ffs_tab[i].used  = FALSE;
+            ffs_tab[i].owner = -1;
+            if (ffs_free_count < MAX_FFS_SIZE) {
+                ffs_free_count++;
+            }
         }
     }
 
@@ -301,5 +302,6 @@ void vm_cleanup(pid32 pid)
      * For now we just leave them; MAX_PT_SIZE is large enough
      * for the professor's tests. Later you can add a bitmap for reuse.
      */
-}
 
+    restore(mask);
+}

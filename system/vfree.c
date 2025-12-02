@@ -68,18 +68,26 @@ static void coalesce_free_regions(struct procent *prptr)
 
 syscall vfree(char *ptr, uint32 nbytes)
 {
-    struct procent *prptr = &proctab[currpid];
+    intmask mask;
+    struct procent *prptr;
     uint32 start, end, size;
     uint32 freed_pages;
     pd_t *pd;
     uint32 va;
+    struct vmem_region *r;
+
+    mask = disable();
+
+    prptr = &proctab[currpid];
 
     if (ptr == NULL || nbytes == 0) {
+        restore(mask);
         return SYSERR;
     }
 
     /* Validate that this is a user process */
     if (!prptr->user_process) {
+        restore(mask);
         return SYSERR;
     }
 
@@ -89,6 +97,7 @@ syscall vfree(char *ptr, uint32 nbytes)
 
     /* Validate that the region is fully allocated */
     if (!validate_vfree(prptr, ptr, nbytes)) {
+        restore(mask);
         return SYSERR;
     }
 
@@ -124,7 +133,6 @@ syscall vfree(char *ptr, uint32 nbytes)
     }
 
     /* Mark all vmem regions fully inside [start, end) as free */
-    struct vmem_region *r;
     for (r = prptr->vmem.regions; r != NULL; r = r->next) {
         uint32 r_start = r->start_addr;
         uint32 r_end   = r->start_addr + r->size;
@@ -142,5 +150,6 @@ syscall vfree(char *ptr, uint32 nbytes)
     /* Coalesce adjacent free regions to recreate bigger holes */
     coalesce_free_regions(prptr);
 
+    restore(mask);
     return OK;
 }

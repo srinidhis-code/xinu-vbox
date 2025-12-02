@@ -39,18 +39,18 @@ void pagefault_handler(void)
 
     prptr = &proctab[currpid];
 
-    /* We do not expect page faults in kernel-only processes */
+    /* Kernel processes should not page fault on user heap addresses */
     if (!prptr->user_process) {
         kprintf("Page fault in kernel process %d at 0x%08X\n",
                 currpid, (unsigned)fault_addr);
-        kill(currpid);
+        panic("Kernel page fault");
         return;
     }
 
     /* Check if fault address is in an allocated user heap region */
     if (!vaddr_in_allocated_region(prptr, vpage)) {
         /* Segmentation fault in user process */
-        kprintf("P%d:: SEGMENTATION_FAULT\n", currpid);
+        kprintf("P%d:: SEGMENTATION_FAULT at 0x%08X\n", currpid, (unsigned)fault_addr);
         kill(currpid);
         return;
     }
@@ -66,16 +66,17 @@ void pagefault_handler(void)
 
     /* ffs_alloc_frame() already zeroes the frame */
 
-    /* Choose the page directory */
-    if (prptr->user_process && prptr->prpdbr != 0) {
-        pd = (pd_t *)prptr->prpdbr;
-    } else {
+    /* Use the process's page directory (set during vcreate) */
+    pd = (pd_t *)prptr->prpdbr;
+    if (pd == NULL || prptr->prpdbr == 0) {
+        /* Fallback to system PD (shouldn't happen for user processes) */
         pd = sys_page_dir;
     }
 
-    /* Get/create the PTE for this virtual page */
+    /* Get/create the PTE for this virtual page in the process's PD */
     pte = get_pte(pd, vpage);
 
+    /* Map the FFS frame to this virtual page */
     pte->pt_base   = frame >> 12;  /* physical frame number */
     pte->pt_pres   = 1;            /* present */
     pte->pt_write  = 1;            /* writable */
@@ -86,7 +87,12 @@ void pagefault_handler(void)
     pte->pt_dirty  = 0;
     pte->pt_mbz    = 0;
     pte->pt_global = 0;
-    /* pt_avail left for later (e.g., swapping metadata) */
 
-    /* No explicit TLB invalidation needed: this was a not-present entry */
+    /* Invalidate the TLB entry for this virtual address.
+     * Even though the page was not present before, some CPUs
+     * may cache "not present" entries. Safe to always invalidate.
+     */
+    invlpg((void *)vpage);
+
+    /* Return to retry the faulting instruction - page is now mapped */
 }

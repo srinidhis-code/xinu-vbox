@@ -10,9 +10,25 @@
 #define MAX_SWAP_SIZE   32*1024 /* size of swap space (in frames)            */
 #define MAX_PT_SIZE     1024    /* space used for page tables (in frames)    */
 
-/* ECE565: user heap virtual address range */
-#define VHEAP_START     0x02000000u   /* 32MB */
-#define VHEAP_END       0x07FFFFFFu   /* 128MB-1, 64MB window */
+/* Physical memory layout:
+ *   0x00000000 - 0x02000000  (32MB)  : Kernel (code, data, heap)
+ *   0x02000000 - 0x06000000  (64MB)  : FFS frames (16K frames * 4KB)
+ *   0x06000000 - 0x0E000000  (128MB) : Swap space (32K frames * 4KB)
+ *   Total: 224MB mapped
+ */
+#define KERNEL_END      0x02000000u   /* 32MB - end of kernel region       */
+#define FFS_START       0x02000000u   /* 32MB - start of FFS region        */
+#define FFS_END         0x06000000u   /* 96MB - end of FFS (64MB for FFS)  */
+#define SWAP_START      0x06000000u   /* 96MB - start of swap region       */
+#define SWAP_END        0x0E000000u   /* 224MB - end of swap (128MB)       */
+
+/* Extended physical memory mapping for kernel + FFS + swap access */
+#define PHYS_MEM_PAGES  57344   /* total pages to identity-map (224MB / 4KB) */
+#define PHYS_MEM_END    0x0E000000u   /* 224MB = SWAP_END                  */
+
+/* ECE565: user heap virtual address range (virtual addresses, not physical) */
+#define VHEAP_START     0x10000000u   /* 256MB - start of user virtual heap */
+#define VHEAP_END       0x1FFFFFFFu   /* 512MB-1 - end of user virtual heap */
 
 /* Structure for a page directory entry */
 
