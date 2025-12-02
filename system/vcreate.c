@@ -83,6 +83,16 @@ pid32 vcreate(
         break;
     }
 
+    case 5: {
+        uint32 a1 = va_arg(ap, uint32);
+        uint32 a2 = va_arg(ap, uint32);
+        uint32 a3 = va_arg(ap, uint32);
+        uint32 a4 = va_arg(ap, uint32);
+        uint32 a5 = va_arg(ap, uint32);
+        pid = create(funcaddr, ssize, priority, name, 5, a1, a2, a3, a4, a5);
+        break;
+    }
+
     default:
         /* You can extend this if you need more args */
         va_end(ap);
