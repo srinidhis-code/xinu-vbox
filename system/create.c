@@ -55,6 +55,10 @@ pid32	create(
 	prptr->prdesc[1] = CONSOLE;
 	prptr->prdesc[2] = CONSOLE;
 
+	/* Initialize kernel process fields */
+	prptr->user_process = FALSE;
+	prptr->prpdbr       = sys_pdbr;   /* share system PD for kernel processes */
+
 	/* Initialize stack as if the process was called		*/
 
 	*saddr = STACKMAGIC;

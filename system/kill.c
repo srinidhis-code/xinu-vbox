@@ -29,6 +29,7 @@ syscall	kill(
 	for (i=0; i<3; i++) {
 		close(prptr->prdesc[i]);
 	}
+	vm_cleanup(pid);   /* free FFS frames for user process  */
 	freestk(prptr->prstkbase, prptr->prstklen);
 
 	switch (prptr->prstate) {

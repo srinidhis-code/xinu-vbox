@@ -40,6 +40,20 @@
 
 /* Definition of the process table (multiple of 32 bits) */
 
+/* --------- ECE565 virtual memory region structures --------- */
+
+struct vmem_region {
+    uint32               start_addr;    /* starting virtual address        */
+    uint32               size;          /* size in bytes (page multiple)   */
+    bool8                allocated;     /* TRUE if allocated               */
+    struct vmem_region  *next;          /* next region in list             */
+};
+
+struct proc_vmem {
+    struct vmem_region *regions;         /* head of region list             */
+    uint32              total_allocated; /* total pages/bytes allocated     */
+};
+
 struct procent {		/* Entry in the process table		*/
 	uint16	prstate;	/* Process state: PR_CURR, etc.		*/
 	pri16	prprio;		/* Process priority			*/
@@ -52,6 +66,9 @@ struct procent {		/* Entry in the process table		*/
 	umsg32	prmsg;		/* Message sent to this process		*/
 	bool8	prhasmsg;	/* Nonzero iff msg is valid		*/
 	int16	prdesc[NDESC];	/* Device descriptors for process	*/
+    bool8   user_process;      /* TRUE if created by vcreate()         */
+    uint32  prpdbr;            /* Physical address for CR3             */
+	struct  proc_vmem vmem;    /* Per-process virtual heap metadata   */
 };
 
 /* Marker for the top of a process stack (used to help detect overflow)	*/

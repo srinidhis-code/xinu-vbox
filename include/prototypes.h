@@ -102,6 +102,9 @@ extern	void	trap(int32);
 /* in file exception.c */
 extern  void exception(int32, int32*);
 
+/* in file pagefault_handler.c */
+extern void pagefault_handler(void);
+
 /* in file freebuf.c */
 extern	syscall	freebuf(char *);
 
@@ -121,6 +124,22 @@ extern	pid32	getitem(pid32);
 
 /* in file getmem.c */
 extern	char	*getmem(uint32);
+
+/* in file vcreate.c */
+extern	pid32	vcreate(void *, uint32, pri16, char *, uint32, ...);
+
+/* in file vmalloc.c */
+extern	char	*vmalloc(uint32);
+
+/* in file vfree.c */
+extern	syscall	vfree(char *, uint32);
+
+/* VM debug + frame management (paging.c) */
+extern unsigned long ffs_alloc_frame(pid32 pid);
+extern void          ffs_free_frame(pid32 pid, unsigned long frame);
+extern uint32        free_ffs_pages(void);
+extern uint32        used_ffs_frames(pid32 pid);
+extern uint32        allocated_virtual_pages(pid32 pid);
 
 /* in file getpid.c */
 extern	pid32	getpid(void);

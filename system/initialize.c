@@ -4,6 +4,9 @@
 
 #include <xinu.h>
 #include <string.h>
+#include <interrupt.h>          /* for set_evec prototype */
+
+extern void pagefault_handler_disp(void);   /* from pagefault_handler_disp.S */
 
 extern	void	start(void);	/* Start of Xinu code			*/
 extern	void	*_end;		/* End of Xinu code			*/
@@ -161,6 +164,13 @@ static	void	sysinit()
 	/* Initialize free memory list */
 	
 	meminit();
+
+	init_paging();
+	write_cr3(sys_pdbr);
+	enable_paging();
+
+	/* Install page fault handler (ISR 14) */
+	set_evec(14, (uint32)pagefault_handler_disp);
 
 	/* Initialize system variables */
 
