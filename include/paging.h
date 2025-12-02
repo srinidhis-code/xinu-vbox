@@ -105,7 +105,9 @@ void map_region(pd_t *pd, unsigned long start, unsigned long end);
 
 /* FFS frame allocation and management */
 unsigned long ffs_alloc_frame(pid32 pid);
-void         ffs_free_frame(pid32 pid, unsigned long frame);
+void          ffs_free_frame(pid32 pid, unsigned long frame);
+void          ffs_set_vaddr(unsigned long frame, unsigned long vaddr, pd_t *pd);
+void          ffs_claim_frame(unsigned long frame, pid32 new_owner);
 
 /* VM debug functions */
 uint32 free_ffs_pages(void);
@@ -114,5 +116,22 @@ uint32 allocated_virtual_pages(pid32 pid);
 
 /* Clean up virtual memory resources for a process */
 void vm_cleanup(pid32 pid);
+
+/*============================================================================
+ * SWAPPING SUPPORT (Optional - Phase 0: declarations only)
+ *============================================================================
+ */
+#define DEBUG_SWAPPING  0   /* 0 = disabled, 1 = enabled */
+
+extern unsigned debug_swapping;         /* counter to limit debug output    */
+extern uint32 free_swap_pages(void);    /* returns # of free swap frames    */
+
+/* Swap subsystem functions */
+void          swap_init(void);
+unsigned long swap_select_victim(void);
+unsigned long swap_alloc_frame(void);
+void          swap_free_frame(unsigned long swap_idx);
+void          swap_out(unsigned long ffs_frame);
+unsigned long swap_in(unsigned long swap_idx);
 
 #endif /* _PAGING_H_ */

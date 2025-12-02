@@ -55,38 +55,93 @@ void pagefault_handler(void)
         return;
     }
 
+    /* Use the process's page directory (set during vcreate) */
+    pd = (pd_t *)prptr->prpdbr;
+    if (pd == NULL || prptr->prpdbr == 0) {
+        pd = sys_page_dir;
+    }
+
+    /* Get the PTE for this virtual page */
+    pte = get_pte(pd, vpage);
+
+#if DEBUG_SWAPPING
+    /* Check if this page is swapped out (pt_pres=0, pt_avail=1) */
+    if (!pte->pt_pres && pte->pt_avail == 1) {
+        /* Swap-in case: page lives in swap space */
+        unsigned long swap_idx = pte->pt_base;  /* swap frame index stored in pt_base */
+
+        frame = swap_in(swap_idx);
+        if ((int)frame == SYSERR) {
+            kprintf("P%d:: SWAP_IN_FAILED (addr=0x%08X)\n",
+                    currpid, (unsigned)fault_addr);
+            kill(currpid);
+            return;
+        }
+
+        /* Record vaddr/pd for this FFS frame (for future eviction) */
+        ffs_set_vaddr(frame, vpage, pd);
+
+        /* Update PTE to point to new FFS frame */
+        pte->pt_base   = frame >> 12;
+        pte->pt_pres   = 1;
+        pte->pt_write  = 1;
+        pte->pt_user   = 1;
+        pte->pt_avail  = 0;  /* no longer in swap */
+        pte->pt_acc    = 1;  /* mark as recently accessed (for clock LRU) */
+        pte->pt_dirty  = 0;
+
+        invlpg((void *)vpage);
+        return;  /* page restored from swap */
+    }
+#endif
+
     /* Valid heap page: perform lazy allocation using FFS */
     frame = ffs_alloc_frame(currpid);
     if ((int)frame == SYSERR || frame == 0) {
+
+#if DEBUG_SWAPPING
+        /* FFS is full - evict a victim and directly use that frame */
+        unsigned long victim_phys = swap_select_victim();
+        if ((int)victim_phys == SYSERR) {
+            kprintf("P%d:: OUT_OF_MEMORY (addr=0x%08X)\n",
+                    currpid, (unsigned)fault_addr);
+            kill(currpid);
+            return;
+        }
+        swap_out(victim_phys);
+
+        /* Directly use the evicted frame - transfer ownership */
+        frame = victim_phys;
+        ffs_claim_frame(frame, currpid);
+
+        /* Zero the frame for new use */
+        memset((void *)frame, 0, PAGE_SIZE);
+#else
+        /* Swapping disabled: original behavior */
         kprintf("P%d:: OUT_OF_MEMORY (addr=0x%08X)\n",
                 currpid, (unsigned)fault_addr);
         kill(currpid);
         return;
+#endif
     }
 
     /* ffs_alloc_frame() already zeroes the frame */
 
-    /* Use the process's page directory (set during vcreate) */
-    pd = (pd_t *)prptr->prpdbr;
-    if (pd == NULL || prptr->prpdbr == 0) {
-        /* Fallback to system PD (shouldn't happen for user processes) */
-        pd = sys_page_dir;
-    }
+    /* Record vaddr/pd for this FFS frame (for future eviction) */
+    ffs_set_vaddr(frame, vpage, pd);
 
-    /* Get/create the PTE for this virtual page in the process's PD */
-    pte = get_pte(pd, vpage);
-
-    /* Map the FFS frame to this virtual page */
+    /* Map the FFS frame to this virtual page (pd and pte already set above) */
     pte->pt_base   = frame >> 12;  /* physical frame number */
     pte->pt_pres   = 1;            /* present */
     pte->pt_write  = 1;            /* writable */
     pte->pt_user   = 1;            /* user accessible */
     pte->pt_pwt    = 0;
     pte->pt_pcd    = 0;
-    pte->pt_acc    = 0;
+    pte->pt_acc    = 1;            /* mark as recently accessed (for clock LRU) */
     pte->pt_dirty  = 0;
     pte->pt_mbz    = 0;
     pte->pt_global = 0;
+    pte->pt_avail  = 0;            /* not in swap */
 
     /* Invalidate the TLB entry for this virtual address.
      * Even though the page was not present before, some CPUs

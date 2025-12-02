@@ -114,7 +114,9 @@ syscall vfree(char *ptr, uint32 nbytes)
     /* Free the physical frames backing this range (if any) */
     for (va = start; va < end; va += PAGE_SIZE) {
         pt_t *pte = get_pte(pd, va);
+
         if (pte->pt_pres) {
+            /* Page is present in FFS */
             unsigned long phys = (unsigned long)(pte->pt_base << 12);
 
             /* Return frame to FFS */
@@ -126,10 +128,22 @@ syscall vfree(char *ptr, uint32 nbytes)
             pte->pt_user  = 0;
             pte->pt_acc   = 0;
             pte->pt_dirty = 0;
+            pte->pt_avail = 0;
 
             /* Invalidate this TLB entry - MUST be inside loop for each page */
             invlpg((void *)va);
         }
+#if DEBUG_SWAPPING
+        else if (pte->pt_avail == 1) {
+            /* Page is swapped out - free the swap frame */
+            unsigned long swap_idx = pte->pt_base;
+            swap_free_frame(swap_idx);
+
+            /* Clear PTE */
+            pte->pt_base  = 0;
+            pte->pt_avail = 0;
+        }
+#endif
     }
 
     /* Mark all vmem regions fully inside [start, end) as free */
